@@ -1,0 +1,301 @@
+"""This is how to prepare data for the WOWY analysis. Ensure that the
+latest data is downloaded from Bigballdata and overwrites old data so that
+references do not need to be updated."""
+
+import pandas as pd
+import numpy as np
+import datetime
+
+sched = pd.read_csv('schedule_nba.csv') #this does not need to be updated
+pbp = pd.read_csv('seasoned_data.csv') #this does need to be updated daily, 'game_id' column needs to be switched to type-number
+
+
+merged = pd.merge(pbp, sched, on='game_id') #here is the step one dataframe
+
+merged['home_lineup'] = merged['h1'] + ", " + merged['h2'] + ", " + merged['h3'] + ", " + merged['h4'] + ", " + merged['h5'] 
+merged['away_lineup'] = merged['a1'] + ", " + merged['a2'] + ", " + merged['a3'] + ", " + merged['a4'] + ", " + merged['a5'] 
+
+merged = merged[merged['play_length'] != '00:-12:00']
+merged = merged[merged['play_length'] != '00:-5:00']
+
+teams = ['ATL', 'BKN', 'BOS', 'CHA', 'CHI', 'CLE', 'DAL', 'DEN', 'DET', 'GSW', 'HOU', 'IND', 'LAC', 'LAL', 'MEM', 'MIA', 'MIL', 'MIN', 'NOP', 'NYK', 'OKC', 'ORL', 'PHI', 'PHO', 'POR', 'SAC', 'SAS', 'TOR', 'UTA', 'WAS']
+
+print('Select team you want to filter by:') #here is the team filter
+print("If you need help, enter 'help'.")
+team = input()
+
+while team == 'help':
+    print("Teams are stored by their three letter abbreviations.")
+    print("Here are available options:")
+    print(teams)
+    print('Select team you want to filter by:')
+    print("If you need help, enter 'help'.")
+    team = input()
+
+team = str(team)
+
+print('You have selected ' + team)
+
+pd.set_option('mode.chained_assignment', None)
+
+team_query = merged[(merged.loc[:,'home_abbrev']==team)|(merged.loc[:,'away_abbrev']==team)]
+
+#merged['team_lineup'] = [merged['home_lineup'] if team == merged['home_team'] else merged['away_lineup']]
+#team_query['team_lineup'] = np.where(team_query['home_abbrev']==team, team_query['home_lineup'], team_query['away_lineup'])
+team_query['team_lineup'] = np.where(team_query.loc[:,'home_abbrev']==team, team_query['home_lineup'], team_query['away_lineup'])
+
+team_query.to_csv('test_filter.csv') #comment out afterwards
+
+print('Your dataset has been filtered by the selected team.')
+
+print('Would you like to filter by home or away? (yes/no)') #here is the home/away filter
+home_away_select = input()
+
+if home_away_select =="yes":
+    print("Would you like to filter for home or away?:")
+    yes_home_away = input()
+    if yes_home_away == "home":
+        loc_query = [(team_query['home_abbrev']==team)]
+    elif yes_home_away == "away":
+        loc_query = team_query[(team_query['away_abbrev']==team)]
+elif home_away_select == "no":
+    loc_query = team_query
+    print("Your data has been unchanged.")
+
+print('Would you like to filter by date range? (yes/no):') #here is the date filter
+print("If you need help, enter 'help'.")
+date_filter = input()
+
+while date_filter == "help":
+    print("Dates are stored in the 'mm/dd/yyyy' format. Dates will not be before 10/22/2019 and will not exceed the current date.")
+    print('Would you like to filter by date range?:') #here is the date filter after a "help" input
+    print("If you need help, enter 'help'.")
+    date_filter = input()
+
+if date_filter == "yes":
+    print('Select starting date for filter')
+    start_date = input()
+    print('Select end date for filter')
+    end_date = input()
+    date_query = (loc_query['date'] >= start_date) & (loc_query['date'] <= end_date )
+    print("Your data has been filtered to include only data between the dates " + str(start_date) + " and " + str(end_date) + ".")
+    
+elif date_filter == "no":
+    date_query = loc_query
+    print("Your data has been unchanged.")
+
+print("Would you like to require specific players in your query? (yes/no):") #here is the player filter
+print("Enter 'help' for further details.")
+player_query = date_query
+player_filter = input()
+
+
+while player_filter == "help":
+    print("The player filter will ensure that the dataframe includes only rows featuring all players in the filter.")
+    print("Here are the possible options in your dataframe:")
+    options = player_query['team_lineup'].unique()
+    options = options.tolist()
+    options = [i.split(", ") for i in options]
+    flat_list = [item for sublist in options for item in sublist]
+    flat_list = list(dict.fromkeys(flat_list))
+    print(flat_list)
+    print("Would you like to require specific players in your query? (yes/no):")
+    print("Enter 'help' for further details.")
+    player_filter = input()
+  
+while player_filter == "yes":
+    print("Enter player name:")
+    player = input()
+
+    player_query = player_query[player_query['team_lineup'].str.contains(player)]
+    print("Would you like to require additional players in your query? (yes/no):")
+    player_filter = input()
+
+    
+if player_filter == "no":
+      player_query = player_query
+
+
+print("Would you like to exclude players in your query? (yes/no):")
+print("Enter 'help' for further details.")
+refined_query = player_query
+
+exclude = input()
+
+if exclude == "no":
+    refined_query = refined_query
+
+while exclude == "yes":
+    print("Enter player name:")
+    rem_player = input()
+    
+    refined_query = player_query
+    refined_query = refined_query[refined_query['team_lineup'].str.contains(rem_player, na=False)==False]
+    print("Would you like to exclude additional players from your query? (yes/no):")
+    exclude = input()
+    refined_query = refined_query
+    
+print("Your dataset is filtered.")
+
+teammates = refined_query['team_lineup'].unique()
+teammates = teammates.tolist()
+teammates = [i.split(", ") for i in teammates]
+flat_teammates = [item for sublist in teammates for item in sublist]
+flat_teammates = list(dict.fromkeys(flat_teammates))
+print(flat_teammates)
+
+min_log = []
+game_log = []
+point_log = []
+assist_log = []
+rebound_log = []
+block_log = []
+steal_log = []
+turnover_log = []      
+three_log = []
+fgm_log = []
+miss_log = []
+assisting_log = []
+
+for i in flat_teammates: #minutes played
+    player_search = refined_query[refined_query['team_lineup'].str.contains(i, na=False)==True]
+    player_search['play_length'] = pd.to_datetime(player_search['play_length'], format='%H:%M:%S')
+    secs_player = player_search['play_length'].dt.second.sum()
+    min_log.append((secs_player)/60)
+
+for i in flat_teammates: #number of games played
+    game_count = refined_query[refined_query['team_lineup'].str.contains(i, na=False)==True]
+    game_played = game_count['game_id'].nunique()
+    game_log.append(game_played)
+
+for i in flat_teammates: #number of FGM
+    fgm_count = refined_query[refined_query['team_lineup'].str.contains(i, na=False)==True]
+    fgm_count = fgm_count[fgm_count['player']==i]
+    fgm_count = fgm_count[fgm_count['event_type']=='shot']
+    fgm_no = len(fgm_count)
+    fgm_log.append(fgm_no)
+
+for i in flat_teammates: #number of misses
+    miss_count = refined_query[refined_query['team_lineup'].str.contains(i, na=False)==True]
+    miss_count = miss_count[miss_count['player']==i]
+    miss_count = miss_count[miss_count['event_type']=='miss']
+    miss_no = len(miss_count)
+    miss_log.append(miss_no)
+
+for i in flat_teammates: #total points scored
+    point_count = refined_query[refined_query['team_lineup'].str.contains(i, na=False)==True]
+    player_shots = point_count[point_count['player']==i]
+    points = player_shots['points'].sum()
+    point_log.append(points)
+
+for i in flat_teammates: #3 pointers scored
+    three_count = refined_query[refined_query['team_lineup'].str.contains(i, na=False)==True]
+    three_count = three_count[three_count['player']==i]
+    three_count = three_count[three_count['points']==3]
+    threes = three_count['points'].sum()
+    three_no = threes / 3
+    three_log.append(three_no)
+
+for i in flat_teammates: #assists
+    assist_count = refined_query[refined_query['team_lineup'].str.contains(i, na=False)==True]
+    assist_count = assist_count[assist_count['assist'].str.contains(i, na=False)==True]
+    assist_no = len(assist_count)
+    assist_log.append(assist_no)
+
+for i in flat_teammates: #rebounds
+    rebound_count = refined_query[refined_query['team_lineup'].str.contains(i, na=False)==True]
+    rebound_count = rebound_count[rebound_count['player'].str.contains(i, na=False)==True]
+    rebound_count = rebound_count[rebound_count['event_type']=='rebound']
+    rebound_no = len(rebound_count)
+    rebound_log.append(rebound_no)
+    
+for i in flat_teammates: #steals
+    steal_count = refined_query[refined_query['team_lineup'].str.contains(i, na=False)==True]
+    steal_count = steal_count[steal_count['steal'].str.contains(i, na=False)==True]
+    steal_no = len(steal_count)
+    steal_log.append(steal_no)
+
+for i in flat_teammates: #blocks
+    block_count = refined_query[refined_query['team_lineup'].str.contains(i, na=False)==True]
+    block_count = block_count[block_count['block'].str.contains(i, na=False)==True]
+    block_no = len(block_count)
+    block_log.append(block_no)
+
+for i in flat_teammates: #turnovers
+    turnover_count = refined_query[refined_query['team_lineup'].str.contains(i, na=False)==True]
+    turnover_count = turnover_count[turnover_count['player'].str.contains(i, na=False)==True]
+    turnover_count = turnover_count[turnover_count['event_type']=='turnover']
+    turnover_no = len(turnover_count)
+    turnover_log.append(turnover_no)
+
+for i in flat_teammates: #unassisted fg
+    assisting_count = refined_query[refined_query['team_lineup'].str.contains(i, na=False)==True]
+    assisting_count = assisting_count[assisting_count['player']==i]
+    assisting_count = assisting_count[assisting_count['event_type']=='shot']
+    assisting_no = assisting_count['assist'].isnull().sum()
+    assisting_log.append(assisting_no)    
+
+
+wowy_log = pd.DataFrame(list(map(list, zip(flat_teammates, game_log, fgm_log, miss_log, min_log, point_log, three_log, assist_log, rebound_log, block_log, steal_log, turnover_log, assisting_log))))
+wowy_log.columns = ['Player', 'GP', 'FGM', 'MISS', 'MIN', 'PTS', 'TPM', 'AST', 'REB', 'BLK', 'STL', 'TOV', 'UA']
+wowy_log['MPG'] = wowy_log['MIN'] / wowy_log['GP']
+wowy_log['MIN'] = wowy_log['MIN'].round(2)
+wowy_log['MPG'] = wowy_log['MPG'].round(2)
+wowy_log['FGA'] = wowy_log['FGM'] + wowy_log['MISS']
+wowy_log['FG%'] = wowy_log['FGM'] / wowy_log['FGA']
+wowy_log['FG%'] = wowy_log['FG%'].round(2)
+wowy_log['A'] =  wowy_log['FGM'] - wowy_log['UA']
+wowy_log['%A'] = wowy_log['A'] / wowy_log['FGM']
+wowy_log['%A'] = wowy_log['%A'].round(3)
+pd.set_option('display.expand_frame_repr', False)
+print(wowy_log)
+print("-----------------------------")
+print("")
+
+team_points = refined_query.groupby(['game_id','team'])['points'].sum()
+only_shots = refined_query[refined_query['event_type']=='shot']
+team_shots = only_shots.groupby(['game_id','team'])['event_type'].count()
+only_misses = refined_query[refined_query['event_type']=='miss']
+team_misses = only_misses.groupby(['game_id','team'])['event_type'].count()
+only_freethrow = refined_query[refined_query['event_type']=='free throw']
+team_freethrow = only_freethrow.groupby(['game_id','team'])['event_type'].count()
+only_turnover = refined_query[refined_query['event_type']=='turnover']
+team_turnover = only_turnover.groupby(['game_id','team'])['event_type'].count()
+only_foul = refined_query[refined_query['event_type']=='foul']
+team_foul = only_foul.groupby(['game_id','team'])['event_type'].count()
+only_orb = refined_query[refined_query['type']=='rebound offensive']
+team_orb = only_orb.groupby(['game_id','team'])['event_type'].count()
+only_drb = refined_query[refined_query['type']=='rebound defensive']
+team_drb = only_drb.groupby(['game_id','team'])['event_type'].count()
+only_no_assists = only_shots[only_shots['assist'].isna()==True]
+team_unassist = only_no_assists.groupby(['game_id','team'])['event_type'].count()
+
+team_stats = pd.concat([team_points, team_shots, team_misses, team_freethrow, team_turnover, team_foul, team_orb, team_drb, team_unassist], axis=1)
+team_stats.to_csv("team_stats.csv")
+team_stats = pd.read_csv("team_stats.csv") #This is a jerryrig lol
+
+team_stats.columns = ['game_id', 'Team', 'PTS', 'FGM', 'Miss', 'FTA', 'TOV', 'Foul', 'ORB', 'DRB', 'UA']
+team_stats['FGA'] = team_stats['FGM'] + team_stats['Miss']
+team_stats['FG%'] = team_stats['FGM'] / team_stats['FGA']
+team_stats['FG%'] = team_stats['FG%'].round(3)
+team_stats['A%'] = 1 - (team_stats['UA']/team_stats['FGM'])
+team_stats['A%'] = team_stats['A%'].round(3)
+
+
+team_stats['OPP_FGA'] = team_stats.groupby('game_id')['FGA'].apply(lambda x: x.iloc[::-1]).reset_index(drop=True)
+team_stats['OPP_FTA'] = team_stats.groupby('game_id')['FTA'].apply(lambda x: x.iloc[::-1]).reset_index(drop=True)
+team_stats['OPP_ORB'] = team_stats.groupby('game_id')['ORB'].apply(lambda x: x.iloc[::-1]).reset_index(drop=True)
+team_stats['OPP_DRB'] = team_stats.groupby('game_id')['DRB'].apply(lambda x: x.iloc[::-1]).reset_index(drop=True)
+team_stats['OPP_FGM'] = team_stats.groupby('game_id')['FGM'].apply(lambda x: x.iloc[::-1]).reset_index(drop=True)
+team_stats['OPP_TOV'] = team_stats.groupby('game_id')['TOV'].apply(lambda x: x.iloc[::-1]).reset_index(drop=True)
+
+team_part = (team_stats['FGA'] + 0.4 * team_stats['FTA'] - 1.07 * (team_stats['ORB'] / (team_stats['ORB'] + team_stats['OPP_DRB'])) * (team_stats['FGA'] - team_stats['FGM']) + team_stats['TOV'])
+opp_part = (team_stats['OPP_FGA'] + 0.4 * team_stats['OPP_FTA'] - 1.07 * (team_stats['OPP_ORB'] / (team_stats['OPP_ORB'] + team_stats['DRB'])) * (team_stats['OPP_FGA'] - team_stats['OPP_FGM']) + team_stats['OPP_TOV'])
+
+
+team_stats['POSS'] = 0.5 * (team_part + opp_part)
+team_stats['POSS'] = team_stats['POSS'].round(2)
+
+
+
+print(team_stats)
